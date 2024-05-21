@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Test</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const status = document.getElementById('status');
+            const messages = document.getElementById('messages');
+            
+            // Asegúrate de que la dirección y el puerto coinciden con tu servidor WebSocket
+            const ws = new WebSocket('ws://localhost:5687');
+
+            ws.onopen = function() {
+                status.textContent = 'Conectado!';
+            };
+
+            ws.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+                messages.innerHTML += `<p>Class ID: ${message.class_id}</p>`;
+            };
+
+            ws.onclose = function() {
+                status.textContent = 'Desconectado.';
+            };
+
+            ws.onerror = function(error) {
+                status.textContent = 'Error en la conexión WebSocket.';
+                console.error('WebSocket error:', error);
+            };
+        });
+    </script>
+</head>
+<body>
+    <h1>Cliente WebSocket</h1>
+    <div id="status">No conectado</div>
+    <div id="messages"></div>
+</body>
+</html>
