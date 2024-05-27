@@ -1,10 +1,13 @@
 import streamlit as st
 import tensorflow as tf
+import mediapipe as mp
 import cv2
 import numpy as np
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
-# Paso 3: Crear el módulo de detección de manos
+# SE CORRE CON: python -m streamlit run app.py
+
+
 class handDetector():
     def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
         self.mode = mode
@@ -21,12 +24,13 @@ class handDetector():
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(imgRGB)
 
+        hand_detected = False
         if self.results.multi_hand_landmarks:
+            hand_detected = True
             for handLms in self.results.multi_hand_landmarks:
                 if draw:
-                    self.mpDraw.draw_landmarks(img, handLms,
-                                               self.mpHands.HAND_CONNECTIONS)
-        return img
+                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
+        return hand_detected, img
 
     def findPosition(self, img, handNo=0, draw=True):
         lmList = []
@@ -39,7 +43,6 @@ class handDetector():
                 if draw:
                     cv2.circle(img, (cx, cy), 5, (255, 0, 255), cv2.FILLED)
         return lmList
-
 
 # Cargar el modelo
 model = tf.keras.models.load_model('hand_gesture_model_0_to_5.h5')
@@ -56,9 +59,9 @@ class HandGestureTransformer(VideoTransformerBase):
         img = frame.to_ndarray(format="bgr24")
 
         # Detectar manos en la imagen
-        hands, img = self.detector.findHands(img)
+        hand_detected, img = self.detector.findHands(img)
 
-        if hands:
+        if hand_detected:
             # Preprocesar la imagen para la inferencia
             img_resized = cv2.resize(img, (64, 64))  # Asumiendo que el modelo espera imágenes de 64x64
             img_resized = img_resized / 255.0
