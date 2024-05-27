@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture UI</title>
+    <script>
+        function handleStreamlitMessage(event) {
+            if (typeof event.data === 'number') {
+                document.getElementById('detectedNumber').innerText = event.data;
+                // Realiza acciones según el número detectado
+                // Ejemplo:
+                // if (event.data === 1) { document.getElementById('button1').style.display = 'block'; }
+                // else { document.getElementById('button1').style.display = 'none'; }
+            }
+        }
+
+        window.addEventListener('message', handleStreamlitMessage, false);
+    </script>
+</head>
+<body>
+    <h1>Hand Gesture UI</h1>
+    <p>Detected number: <span id="detectedNumber">None</span></p>
+    <button id="button1" style="display:none;">Button for Number 1</button>
+    <!-- Agrega más botones según sea necesario -->
+    <iframe src="http://localhost:8501" width="700" height="800"></iframe>
+</body>
+</html>
