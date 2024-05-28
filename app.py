@@ -9,19 +9,40 @@ import joblib
 from PIL import Image, ImageDraw, ImageOps
 
 # Clase para detectar manos
-class handDetector():
-    def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
+def normalize_hand(img, lm_list):
+    if not lm_list:
+        # st.write("No landmarks detected.")
+        return None
+    x_min = min([lm[1] for lm in lm_list])
+    y_min = min([lm[2] for lm in lm_list])
+    x_max = max([lm[1] for lm in lm_list])
+    y_max = max([lm[2] for lm in lm_list])
+    # st.write(f"x_min: {x_min}, y_min: {y_min}, x_max: {x_max}, y_max: {y_max}")
+    if x_min >= x_max or y_min >= y_max:
+        # st.write("Invalid bounding box coordinates.")
+        return None
+    hand_img = img[y_min:y_max, x_min:x_max]
+    # st.write(f"Hand image shape: {hand_img.shape}")
+    if hand_img.size == 0:
+        # st.write("Extracted hand image is empty.")
+        return None
+    standard_size = (200, 200)
+    normalized_hand_img = cv2.resize(hand_img, standard_size, interpolation=cv2.INTER_AREA)
+    return normalized_hand_img
+
+class HandDetector:
+    def __init__(self, mode=False, max_hands=2, detection_con=0.5, track_con=0.5):
         self.mode = mode
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.trackCon = trackCon
+        self.maxHands = max_hands
+        self.detectionCon = detection_con
+        self.trackCon = track_con
 
         self.mpHands = mp.solutions.hands
         self.hands = self.mpHands.Hands(static_image_mode=self.mode, max_num_hands=self.maxHands,
                                         min_detection_confidence=self.detectionCon, min_tracking_confidence=self.trackCon)
         self.mpDraw = mp.solutions.drawing_utils
 
-    def findHands(self, img, draw=True):
+    def find_hands(self, img, draw=True):
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(imgRGB)
 
@@ -31,10 +52,10 @@ class handDetector():
                     self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
         return img
 
-    def findPosition(self, img, handNo=0, draw=True):
+    def find_position(self, img, hand_no=0, draw=True):
         lmList = []
         if self.results.multi_hand_landmarks:
-            myHand = self.results.multi_hand_landmarks[handNo]
+            myHand = self.results.multi_hand_landmarks[hand_no]
             for id, lm in enumerate(myHand.landmark):
                 h, w, c = img.shape
                 cx, cy = int(lm.x * w), int(lm.y * h)
@@ -43,26 +64,14 @@ class handDetector():
                     cv2.circle(img, (cx, cy), 5, (255, 0, 255), cv2.FILLED)
         return lmList
 
-    def normalize_hand(self, img, lmList):
-        if not lmList:
-            return None
-        x_min = min([lm[1] for lm in lmList])
-        y_min = min([lm[2] for lm in lmList])
-        x_max = max([lm[1] for lm in lmList])
-        y_max = max([lm[2] for lm in lmList])
-        hand_img = img[y_min:y_max, x_min:x_max]
-        standard_size = (200, 200)
-        normalized_hand_img = cv2.resize(hand_img, standard_size, interpolation=cv2.INTER_AREA)
-        return normalized_hand_img
-
 # Cargar modelo y escalador
-model = load_model('hand_gesture_model_0_to_5.h5')
+model = load_model('tensorflowModels/hand_gesture_model_0_to_5.h5')
 scaler = joblib.load('scaler.pkl')
 
 # Inicializar detector de manos
-detector = handDetector(detectionCon=0.75)
+detector = HandDetector(detection_con=0.75)
 
-# Configurar Streamlit
+# Configurar Streamlit2
 st.title('Sistema de Pedido de Comida por Gestos de Mano')
 st.text('Muestra un número con tu mano (0-5) para seleccionar una opción del menú.')
 
@@ -125,16 +134,16 @@ def real_time_inference():
     selected_option = -1
     start_time = None
     stframe = st.empty()
-    cap = cv2.VideoCapture(1)  # Seleccionar cámara 0
+    cap = cv2.VideoCapture(0)  # Seleccionar cámara 0
     cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to 30
 
     while True:
         success, img = cap.read()
         if not success:
             continue
-        img = detector.findHands(img)
-        lmList = detector.findPosition(img, draw=False)
-        normalized_hand = detector.normalize_hand(img, lmList)
+        img = detector.find_hands(img)
+        lmList = detector.find_position(img, draw=False)
+        normalized_hand = normalize_hand(img, lmList)
 
         if normalized_hand is not None and len(lmList) == 21:
             lmArray = np.array([coord for lm in lmList for coord in lm[1:]]).reshape(1, -1)
