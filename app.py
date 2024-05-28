@@ -1,41 +1,61 @@
 import streamlit as st
-import tensorflow as tf
-import mediapipe as mp
 import cv2
+import mediapipe as mp
 import numpy as np
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import time
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+import joblib
+from PIL import Image, ImageDraw, ImageOps
 
-# SE CORRE CON: python -m streamlit run app.py
+# Clase para detectar manos
+def normalize_hand(img, lm_list):
+    if not lm_list:
+        # st.write("No landmarks detected.")
+        return None
+    x_min = min([lm[1] for lm in lm_list])
+    y_min = min([lm[2] for lm in lm_list])
+    x_max = max([lm[1] for lm in lm_list])
+    y_max = max([lm[2] for lm in lm_list])
+    # st.write(f"x_min: {x_min}, y_min: {y_min}, x_max: {x_max}, y_max: {y_max}")
+    if x_min >= x_max or y_min >= y_max:
+        # st.write("Invalid bounding box coordinates.")
+        return None
+    hand_img = img[y_min:y_max, x_min:x_max]
+    # st.write(f"Hand image shape: {hand_img.shape}")
+    if hand_img.size == 0:
+        # st.write("Extracted hand image is empty.")
+        return None
+    standard_size = (200, 200)
+    normalized_hand_img = cv2.resize(hand_img, standard_size, interpolation=cv2.INTER_AREA)
+    return normalized_hand_img
 
-
-class handDetector():
-    def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
+class HandDetector:
+    def __init__(self, mode=False, max_hands=2, detection_con=0.5, track_con=0.5):
         self.mode = mode
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.trackCon = trackCon
+        self.maxHands = max_hands
+        self.detectionCon = detection_con
+        self.trackCon = track_con
 
         self.mpHands = mp.solutions.hands
         self.hands = self.mpHands.Hands(static_image_mode=self.mode, max_num_hands=self.maxHands,
                                         min_detection_confidence=self.detectionCon, min_tracking_confidence=self.trackCon)
         self.mpDraw = mp.solutions.drawing_utils
 
-    def findHands(self, img, draw=True):
+    def find_hands(self, img, draw=True):
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         self.results = self.hands.process(imgRGB)
 
-        hand_detected = False
         if self.results.multi_hand_landmarks:
-            hand_detected = True
             for handLms in self.results.multi_hand_landmarks:
                 if draw:
                     self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-        return hand_detected, img
+        return img
 
-    def findPosition(self, img, handNo=0, draw=True):
+    def find_position(self, img, hand_no=0, draw=True):
         lmList = []
         if self.results.multi_hand_landmarks:
-            myHand = self.results.multi_hand_landmarks[handNo]
+            myHand = self.results.multi_hand_landmarks[hand_no]
             for id, lm in enumerate(myHand.landmark):
                 h, w, c = img.shape
                 cx, cy = int(lm.x * w), int(lm.y * h)
@@ -44,39 +64,137 @@ class handDetector():
                     cv2.circle(img, (cx, cy), 5, (255, 0, 255), cv2.FILLED)
         return lmList
 
-# Cargar el modelo
-model = tf.keras.models.load_model('hand_gesture_model_0_to_5.h5')
+# Cargar modelo y escalador
+model = load_model('tensorflowModels/hand_gesture_model_0_to_5.h5')
+scaler = joblib.load('scaler.pkl')
 
-# Inicializar el detector de manos
-detector = handDetector(detectionCon=0.75)
+# Inicializar detector de manos
+detector = HandDetector(detection_con=0.75)
 
-class HandGestureTransformer(VideoTransformerBase):
-    def __init__(self):
-        self.detector = handDetector(detectionCon=0.75)
-        self.model = tf.keras.models.load_model('hand_gesture_model_0_to_5.h5')
+# Configurar Streamlit2
+st.title('Sistema de Pedido de Comida por Gestos de Mano')
+st.text('Muestra un número con tu mano (0-5) para seleccionar una opción del menú.')
 
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
+# Opciones del menú
+menu_options = {
+    0: 'Hamburguesa',
+    1: 'Pizza',
+    2: 'Ensalada',
+    3: 'Pasta',
+    4: 'Tacos',
+    5: 'Sushi'
+}
 
-        # Detectar manos en la imagen
-        hand_detected, img = self.detector.findHands(img)
+menu_images = {
+    0: './images/hamburguesa.jpg',
+    1: './images/pizza.jpg',
+    2: './images/ensalada.jpg',
+    3: './images/pasta.jpg',
+    4: './images/tacos.jpg',
+    5: './images/sushi.jpg'
+}
 
-        if hand_detected:
-            # Preprocesar la imagen para la inferencia
-            img_resized = cv2.resize(img, (64, 64))  # Asumiendo que el modelo espera imágenes de 64x64
-            img_resized = img_resized / 255.0
-            img_expanded = np.expand_dims(img_resized, axis=0)
+menu_options_final = {
+    'Hamburguesa': './images/hamburguesa.jpg',
+    'Pizza': './images/pizza.jpg',
+    'Ensalada': './images/ensalada.jpg',
+    'Pasta': './images/pasta.jpg',
+    'Tacos': './images/tacos.jpg',
+    'Sushi': './images/sushi.jpg'
+}
 
-            # Realizar la predicción
-            prediction = self.model.predict(img_expanded)
-            predicted_number = np.argmax(prediction)
+selected_items = []
 
-            # Escribir el número predicho en la imagen
-            cv2.putText(img, f'Predicted: {predicted_number}', (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 0), 2, cv2.LINE_AA)
+# Función para mostrar el círculo de progreso en una imagen separada
+def draw_progress_circle(base_img, progress):
+    circle_img = Image.new('RGBA', base_img.size, (255, 255, 255, 0))
+    draw = ImageDraw.Draw(circle_img)
+    angle = 360 * progress
+    draw.arc((10, 10, base_img.size[0] - 10, base_img.size[1] - 10), start=0, end=angle, fill=(255, 0, 0, 255), width=10)
+    combined = Image.alpha_composite(base_img.convert("RGBA"), circle_img)
+    return combined
 
-            # Enviar el número detectado a la UI en HTML
-            st.write(f"<script>parent.postMessage({predicted_number}, '*');</script>", unsafe_allow_html=True)
-        return img
+# Mostrar el menú en la barra lateral con imágenes más pequeñas en dos columnas
+st.sidebar.title("Menú de Opciones")
+col1, col2 = st.sidebar.columns(2)
+menu_placeholders = {}
+for idx, option in menu_options.items():
+    if idx % 2 == 0:
+        menu_placeholders[idx] = col1.empty()
+    else:
+        menu_placeholders[idx] = col2.empty()
 
-st.title('Hand Gesture Recognition in Real-Time')
-webrtc_streamer(key="hand-gesture", video_transformer_factory=HandGestureTransformer)
+for idx, option in menu_options.items():
+    menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {option}", use_column_width=True)
+
+# Función para realizar inferencia en tiempo real
+def real_time_inference():
+    global start_time, selected_option
+    pTime = 0
+    selected_option = -1
+    start_time = None
+    stframe = st.empty()
+    cap = cv2.VideoCapture(0)  # Seleccionar cámara 0
+    cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to 30
+
+    while True:
+        success, img = cap.read()
+        if not success:
+            continue
+        img = detector.find_hands(img)
+        lmList = detector.find_position(img, draw=False)
+        normalized_hand = normalize_hand(img, lmList)
+
+        if normalized_hand is not None and len(lmList) == 21:
+            lmArray = np.array([coord for lm in lmList for coord in lm[1:]]).reshape(1, -1)
+            lmArray = scaler.transform(lmArray)
+
+            prediction = model.predict(lmArray)
+            class_id = np.argmax(prediction)
+            confidence = np.max(prediction)
+
+            if selected_option == class_id:
+                elapsed_time = time.time() - start_time
+                progress = elapsed_time / 5.0
+                if progress < 1.0:
+                    base_img = Image.open(menu_images[class_id])
+                    img_with_circle = draw_progress_circle(base_img, progress)
+                    menu_placeholders[class_id].image(img_with_circle, caption=f"{class_id}. {menu_options[class_id]}", use_column_width=True)
+                else:
+                    selected_items.append(menu_options[class_id])
+                    st.write(f'Has seleccionado: {menu_options[class_id]}')
+                    if len(selected_items) >= 3:
+                        st.write("Menú final seleccionado:")
+                        for item in selected_items:
+                            st.write(item)
+                            st.image(menu_options_final[item])
+                        break
+                    for idx in menu_options.keys():
+                        menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {menu_options[idx]}", use_column_width=True)
+                    time.sleep(2)  # Pausa para evitar selecciones consecutivas rápidas
+                    selected_option = -1  # Reiniciar selección
+            else:
+                selected_option = class_id
+                start_time = time.time()
+                # Borrar progreso en todas las imágenes
+                for idx in menu_options.keys():
+                    menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {menu_options[idx]}", use_column_width=True)
+
+        else:
+            selected_option = -1  # Reiniciar selección si no se detecta la mano
+
+        cTime = time.time()
+        fps = 1 / (cTime - pTime)
+        pTime = cTime
+
+        stframe.image(img, channels="BGR")
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+# Ejecutar inferencia en tiempo real
+if st.button('Iniciar detección'):
+    real_time_inference()
