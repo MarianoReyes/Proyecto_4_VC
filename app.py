@@ -134,7 +134,7 @@ def real_time_inference():
     selected_option = -1
     start_time = None
     stframe = st.empty()
-    cap = cv2.VideoCapture(0)  # Seleccionar cámara 0
+    cap = cv2.VideoCapture(1)  # Seleccionar cámara 0
     cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to 30
 
     while True:
@@ -171,7 +171,7 @@ def real_time_inference():
                         break
                     for idx in menu_options.keys():
                         menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {menu_options[idx]}", use_column_width=True)
-                    time.sleep(2)  # Pausa para evitar selecciones consecutivas rápidas
+                    # Pausa para evitar selecciones consecutivas rápidas
                     selected_option = -1  # Reiniciar selección
             else:
                 selected_option = class_id
