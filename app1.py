@@ -6,9 +6,7 @@ import time
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 import joblib
-import requests
 from PIL import Image, ImageDraw, ImageOps
-from io import BytesIO
 
 # Clase para detectar manos
 class handDetector():
@@ -99,12 +97,26 @@ menu_options_final = {
 selected_items = []
 
 # Función para mostrar el círculo de progreso en una imagen separada
-def draw_progress_circle(progress):
-    img = Image.new('RGBA', (150, 150), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(img)
+def draw_progress_circle(base_img, progress):
+    circle_img = Image.new('RGBA', base_img.size, (255, 255, 255, 0))
+    draw = ImageDraw.Draw(circle_img)
     angle = 360 * progress
-    draw.arc((10, 10, 140, 140), start=0, end=angle, fill=(255, 0, 0, 255), width=10)
-    return img
+    draw.arc((10, 10, base_img.size[0] - 10, base_img.size[1] - 10), start=0, end=angle, fill=(255, 0, 0, 255), width=10)
+    combined = Image.alpha_composite(base_img.convert("RGBA"), circle_img)
+    return combined
+
+# Mostrar el menú en la barra lateral con imágenes más pequeñas en dos columnas
+st.sidebar.title("Menú de Opciones")
+col1, col2 = st.sidebar.columns(2)
+menu_placeholders = {}
+for idx, option in menu_options.items():
+    if idx % 2 == 0:
+        menu_placeholders[idx] = col1.empty()
+    else:
+        menu_placeholders[idx] = col2.empty()
+
+for idx, option in menu_options.items():
+    menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {option}", use_column_width=True)
 
 # Función para realizar inferencia en tiempo real
 def real_time_inference():
@@ -113,9 +125,7 @@ def real_time_inference():
     selected_option = -1
     start_time = None
     stframe = st.empty()
-    stcircle = st.empty()
-
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)  # Seleccionar cámara 0
     cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to 30
 
     while True:
@@ -137,9 +147,11 @@ def real_time_inference():
             if selected_option == class_id:
                 elapsed_time = time.time() - start_time
                 progress = elapsed_time / 5.0
-                img_with_circle = draw_progress_circle(progress)
-                stcircle.image(img_with_circle, caption=f"Seleccionando: {menu_options[class_id]}", width=150)
-                if elapsed_time > 5:
+                if progress < 1.0:
+                    base_img = Image.open(menu_images[class_id])
+                    img_with_circle = draw_progress_circle(base_img, progress)
+                    menu_placeholders[class_id].image(img_with_circle, caption=f"{class_id}. {menu_options[class_id]}", use_column_width=True)
+                else:
                     selected_items.append(menu_options[class_id])
                     st.write(f'Has seleccionado: {menu_options[class_id]}')
                     if len(selected_items) >= 3:
@@ -148,12 +160,19 @@ def real_time_inference():
                             st.write(item)
                             st.image(menu_options_final[item])
                         break
+                    for idx in menu_options.keys():
+                        menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {menu_options[idx]}", use_column_width=True)
                     time.sleep(3)  # Pausa para evitar selecciones consecutivas rápidas
+                    selected_option = -1  # Reiniciar selección
             else:
                 selected_option = class_id
                 start_time = time.time()
+                # Borrar progreso en todas las imágenes
+                for idx in menu_options.keys():
+                    menu_placeholders[idx].image(menu_images[idx], caption=f"{idx}. {menu_options[idx]}", use_column_width=True)
 
-            stcircle.write(f'Item del menú seleccionado actual: {menu_options[class_id]}')
+        else:
+            selected_option = -1  # Reiniciar selección si no se detecta la mano
 
         cTime = time.time()
         fps = 1 / (cTime - pTime)
@@ -166,11 +185,6 @@ def real_time_inference():
 
     cap.release()
     cv2.destroyAllWindows()
-
-# Mostrar el menú siempre visible
-st.sidebar.title("Menú")
-for idx, option in menu_options.items():
-    st.sidebar.image(menu_images[idx], caption=f"{idx}. {option}", width=150)
 
 # Ejecutar inferencia en tiempo real
 if st.button('Iniciar detección'):
