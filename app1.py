@@ -79,12 +79,21 @@ menu_options = {
 }
 
 menu_images = {
-    0: 'https://via.placeholder.com/150.png?text=Hamburguesa',
-    1: 'https://via.placeholder.com/150.png?text=Pizza',
-    2: 'https://via.placeholder.com/150.png?text=Ensalada',
-    3: 'https://via.placeholder.com/150.png?text=Pasta',
-    4: 'https://via.placeholder.com/150.png?text=Tacos',
-    5: 'https://via.placeholder.com/150.png?text=Sushi'
+    0: './images/hamburguesa.jpg',
+    1: './images/pizza.jpg',
+    2: './images/ensalada.jpg',
+    3: './images/pasta.jpg',
+    4: './images/tacos.jpg',
+    5: './images/sushi.jpg'
+}
+
+menu_options_final = {
+    'Hamburguesa': './images/hamburguesa.jpg',
+    'Pizza': './images/pizza.jpg',
+    'Ensalada': './images/ensalada.jpg',
+    'Pasta': './images/pasta.jpg',
+    'Tacos': './images/tacos.jpg',
+    'Sushi': './images/sushi.jpg'
 }
 
 selected_items = []
@@ -135,14 +144,16 @@ def real_time_inference():
                     st.write(f'Has seleccionado: {menu_options[class_id]}')
                     if len(selected_items) >= 3:
                         st.write("Menú final seleccionado:")
-                        st.write(selected_items)
+                        for item in selected_items:
+                            st.write(item)
+                            st.image(menu_options_final[item])
                         break
-                    time.sleep(2)  # Pausa para evitar selecciones consecutivas rápidas
+                    time.sleep(3)  # Pausa para evitar selecciones consecutivas rápidas
             else:
                 selected_option = class_id
                 start_time = time.time()
 
-            stcircle.write(f'Menú actual: {menu_options[class_id]}')
+            stcircle.write(f'Item del menú seleccionado actual: {menu_options[class_id]}')
 
         cTime = time.time()
         fps = 1 / (cTime - pTime)
