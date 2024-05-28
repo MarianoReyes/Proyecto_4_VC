@@ -125,7 +125,7 @@ def real_time_inference():
     selected_option = -1
     start_time = None
     stframe = st.empty()
-    cap = cv2.VideoCapture(1)  # Seleccionar cámara 0
+    cap = cv2.VideoCapture(0)  # Seleccionar cámara 0
     cap.set(cv2.CAP_PROP_FPS, 30)  # Set FPS to 30
 
     while True:
